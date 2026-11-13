@@ -72,7 +72,7 @@ h2{font-family:var(--display);font-size:15px;font-weight:600;margin:0 0 10px;tex
 .bar.warn i{background:var(--warn)}.bar.crit i{background:var(--crit)}
 .bar u{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.55;border-radius:1px}
 .bar.thin{height:6px;margin-top:6px}
-.kpis{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:12px 8px;margin-top:14px}
 .kpis div{min-width:0}
 .kpis span{display:block;font-size:12px;color:var(--muted)}
 .kpis b{font-family:var(--display);font-size:15px;font-weight:600;overflow-wrap:anywhere}
@@ -142,6 +142,12 @@ tr.res td:first-child{color:var(--accent)}
 .prev input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
 .prev select{margin-top:8px;padding:8px 10px;font-size:15px}
 ol.steps{padding-left:20px;margin:8px 0;display:flex;flex-direction:column;gap:8px}
+.info{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1.5px solid var(--muted);color:var(--muted);font:600 12px/1 Georgia,"Times New Roman",serif;font-style:italic;text-transform:none;letter-spacing:0;margin-left:6px;vertical-align:middle;flex:none}
+.info:active{background:var(--track)}
+#tip{position:fixed;z-index:25;background:var(--ink);color:var(--bg);padding:12px 14px;border-radius:14px;font-size:13.5px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.28)}
+#tip[hidden]{display:none}
+.help h3{font-family:var(--display);font-size:14px;font-weight:600;margin:16px 0 4px}
+.help p{margin:0;font-size:14px}
 #toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:30;max-width:90%;text-align:center}
 #toast[hidden]{display:none}
 .note{font-size:13px;color:var(--muted)}
@@ -158,7 +164,7 @@ ol.steps{padding-left:20px;margin:8px 0;display:flex;flex-direction:column;gap:8
       <b id="monthLabel"></b>
       <button class="icon-btn" data-act="next" aria-label="Mes siguiente">›</button>
     </div>
-    <div class="sync" id="sync"><span class="dot"></span><span>Cargando…</span></div>
+    <button class="btn sec small" data-act="help">Ayuda</button>
   </header>
   <main id="main"></main>
   <nav>
@@ -171,11 +177,12 @@ ol.steps{padding-left:20px;margin:8px 0;display:flex;flex-direction:column;gap:8
 </div>
 <div id="sheet" hidden><div class="panel" id="panel" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden role="status"></div>
+<div id="tip" hidden role="tooltip"></div>
 <input type="file" id="file" accept=".json,application/json" hidden>
 
 <script>
 "use strict";
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.3.0";
 const SCHEMA = 1;   // versión del formato de datos; migrate() actualiza datos antiguos sin borrarlos
 
 const GROUPS = [
@@ -296,7 +303,7 @@ function alerts(ym){
   return out.sort((a,b)=>b.w-a.w);
 }
 
-/* ---------- lector de SMS Davivienda ---------- */
+/* ---------- lector de SMS del banco ---------- */
 function parseAmt(s){ s=s.replace(/\s/g,"").replace(/[.,]+$/,""); s=s.replace(/[.,]\d{2}$/,""); return digits(s) }
 function guessCat(desc,isIncome){
   const n=norm(desc);
@@ -310,7 +317,7 @@ function guessCat(desc,isIncome){
 function parseSMS(text){
   const lines=text.replace(/\r/g,"").split(/\n+/).map(l=>l.trim()).filter(Boolean);
   const msgs=[]; const hasAmt=l=>/\$\s?\d|(?:por|valor|monto)\s*:?\s*(?:de\s*)?(?:COP\s*)?\d/i.test(l);
-  for(const l of lines){ if(msgs.length&&!hasAmt(l)&&!/davivienda/i.test(l)) msgs[msgs.length-1]+=" "+l; else msgs.push(l) }
+  for(const l of lines){ if(msgs.length&&!hasAmt(l)) msgs[msgs.length-1]+=" "+l; else msgs.push(l) }
   const out=[];
   for(const m of msgs){
     const a=m.match(/\$\s?([\d][\d.,]*)/)||m.match(/(?:por|valor|monto)\s*:?\s*(?:de\s*)?(?:COP\s*)?([\d][\d.,]*)/i);
@@ -318,12 +325,12 @@ function parseSMS(text){
     const amt=parseAmt(a[1]); if(!amt) continue;
     const low=norm(m);
     const rejected=/RECHAZAD|DECLINAD|NEGAD|NO EXITOS|NO FUE EXITOS|FALLID/.test(low);
-    const isIncome=/ABONO|CONSIGNA|RECIBI|TE TRANSFIRI|LE TRANSFIRI|TRANSFERENCIA RECIBIDA|DEPOSITO|PAGO DE NOMINA|REVERS|DEVOLUCION/.test(low);
-    let type=isIncome?"Ingreso":/RETIRO|AVANCE/.test(low)?"Retiro":/TRANSFER|ENVIO|ENVIASTE/.test(low)?"Transferencia":/PAGO/.test(low)?"Pago":"Compra";
+    const isIncome=/ABONO|CONSIGNA|RECIBI|TE TRANSFIRI|LE TRANSFIRI|TE ENVI|TRANSFERENCIA RECIBIDA|DEPOSITO|PAGO DE NOMINA|REVERS|DEVOLUCION/.test(low);
+    let type=isIncome?"Ingreso":/RETIRO|RETIRASTE|AVANCE/.test(low)?"Retiro":/TRANSFER|ENVIO|ENVIASTE/.test(low)?"Transferencia":/PAGO|PAGASTE/.test(low)?"Pago":"Compra";
     let merch="";
     const m1=m.match(/(?:establecimiento|comercio|lugar)\s*:?\s*([^,.;\n]+)/i);
-    const m2=m.match(/\ben\s+(?!su\b|la\b|el\b|tu\b|cuenta\b)([^,;\n]+?)(?=\s*(?:[,;]|\.\s|\.$|\s+con\s|\s+rechazad|\s+el\s+\d|\s+fecha|\s+hora|\s+desde|\s+de\s+su|\s+por\s|\s+T\.|\s+\d{1,2}[\/-]\d|\s+\d{4}[\/-]|$))/i);
-    const m3=isIncome?m.match(/\bde\s+(?!su\b|la\b|tu\b|cuenta\b)([A-ZÁÉÍÓÚÑ][^,;\n]+?)(?=\s*(?:[,;]|\.\s|\.$|\s+el\s+\d|\s+fecha|\s+hora|\s+a\s+su|\s+en\s+su|\s+\d{1,2}[\/-]\d|\s+\d{4}[\/-]|$))/):null;
+    const m2=m.match(/\ben\s+(?!su\b|la\b|el\b|tu\b|cuenta\b)([^,;\n]+?)(?=\s*(?:[,;]|\.\s|\.$|\s+con\s|\s+rechazad|\s+el\s+\d|\s+a\s+las\s|\s+\d{1,2}:\d{2}|\s+fecha|\s+hora|\s+desde|\s+de\s+su|\s+por\s|\s+T\.|\s+\d{1,2}[\/-]\d|\s+\d{4}[\/-]|$))/i);
+    const m3=isIncome?m.match(/\bde\s+(?!su\b|la\b|tu\b|cuenta\b)([A-ZÁÉÍÓÚÑ][^,;\n]+?)(?=\s*(?:[,;]|\.\s|\.$|\s+el\s+\d|\s+fecha|\s+hora|\s+a\s+su|\s+en\s+su|\s+a\s+tu|\s+en\s+tu|\s+\d{1,2}[\/-]\d|\s+\d{4}[\/-]|$))/):null;
     merch=((m1&&m1[1])||(m2&&m2[1])||(m3&&m3[1])||"").replace(/\s+/g," ").trim().slice(0,40);
     let d=todayStr(), dated=false;
     const d1=m.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/), d2=m.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
@@ -339,6 +346,42 @@ function parseSMS(text){
   }
   return out;
 }
+
+/* ---------- ayuda ---------- */
+const TIPS={
+  gastado:"Suma de todos los gastos registrados en el mes: necesarios, obligatorios, no tan necesarios y no necesarios. No incluye ahorros ni ingresos. La barra muestra qué parte del presupuesto planeado llevas. La raya vertical marca el día de hoy: si la barra pasa de la raya, gastas más rápido de lo planeado.",
+  plan:"Suma de los valores mensuales que definiste en Ajustes para tus categorías de gasto. No es el saldo de tu cuenta ni depende de tus ingresos.",
+  falta:"Presupuesto planeado menos lo que llevas gastado. Si gastas más de lo planeado, aquí aparece en rojo cuánto te excediste.",
+  ingresos:"Suma de los ingresos que registraste este mes, por ejemplo cada quincena de salario. Se registran con el botón + eligiendo una categoría de ingreso.",
+  ahorro:"Suma de los movimientos que registraste este mes en categorías de ahorro. Solo cuenta lo que realmente apartaste, no lo planeado.",
+  alertas:"Avisos del mes. Rojo: una categoría o el gasto total superó su presupuesto. Ámbar: pasaste del 80 %, gastas más rápido de lo planeado, superas tu promedio de tres meses o tienes movimientos sin clasificar.",
+  cats:"Cada fila compara lo gastado con el valor planeado de la categoría. Barra verde: vas bien. Ámbar: pasaste del 80 %. Roja: te excediste. La etiqueta sin tope indica que la categoría no tiene valor planeado. Toca una fila para ver sus movimientos.",
+  prio:"Es el orden del método Presupuesto Estratégico: a los ingresos se les restan los gastos por prioridad, y cada resultado muestra cuánto queda para el siguiente nivel. La columna Plan usa los valores de Ajustes; la columna Real usa lo registrado en el mes.",
+  c_obl:"Ingresos menos gastos necesarios. Es lo que te queda para cubrir tus obligaciones.",
+  c_aho:"Lo que queda después de los gastos necesarios y obligatorios. De aquí sale tu ahorro.",
+  c_var:"Lo que queda después de apartar el ahorro fijo. Es el dinero para los gastos no tan necesarios.",
+  c_gra:"Lo que queda después de los gastos no tan necesarios. Es lo que podrías usar en gustos sin afectar lo anterior.",
+  c_ext:"Lo que sobra al final, después de todos los gastos y del ahorro fijo. Se suma a tu ahorro del mes.",
+  flujo:"Ahorro fijo más ahorro extra, dividido entre los ingresos del mes. 20 % o más: Excelente. Entre 10 % y 20 %: Aceptable. Menos de 10 %: Revisar.",
+  trend:"Gasto total de cada uno de los últimos seis meses. La línea punteada es tu presupuesto planeado; una barra roja indica un mes que lo superó.",
+  avg:"Compara lo gastado este mes en cada categoría con el promedio de los tres meses anteriores que tengan datos. Cambio en rojo: subió más de 10 %. En verde: bajó más de 10 %.",
+  top:"Los cinco comercios o descripciones donde más dinero gastaste este mes.",
+  tipos:"Necesarios: lo básico para vivir, como vivienda, alimentación, servicios, salud y transporte. Obligatorios: compromisos que debes pagar, como créditos, impuestos y seguros. No tan necesarios: mejoran tu día a día pero se pueden reducir, como gimnasio, streaming o restaurantes. No necesarios: gustos e imprevistos, como fiestas o viajes no planeados.",
+  aprend:"Cuando le asignas categoría a un movimiento que vino de un SMS, la app recuerda ese comercio y la próxima vez lo clasifica sola."
+};
+const I=k=>`<button class="info" data-act="info" data-k="${k}" aria-label="Qué significa este indicador">i</button>`;
+const HELP=[
+  ["1. Define tu presupuesto","En Ajustes toca cada categoría y escribe su valor mensual planeado. Puedes agregar, renombrar o eliminar categorías y elegir su tipo."],
+  ["2. Registra tus gastos","Toca +, escribe el valor, elige la categoría y guarda. La fecha y la hora se pueden cambiar si el gasto fue otro día."],
+  ["3. Registra tus ingresos","Toca + y elige una categoría de ingreso, por ejemplo el salario de cada quincena. Inicio y Reportes usan solo lo que registres."],
+  ["4. Pega los SMS del banco","Toca + y luego Pegar SMS. Pega uno o varios mensajes: la app lee valor, comercio y fecha, propone la categoría y omite los que ya registraste. En Ajustes están los pasos para que un atajo del iPhone los guarde solos en una nota."],
+  ["5. Revisa Inicio","Verás lo gastado frente a lo planeado, las alertas de sobreconsumo y el avance de cada categoría. Toca una categoría para ver sus movimientos."],
+  ["6. Corrige en Movimientos","Busca o filtra, y toca un movimiento para editarlo, cambiarle la categoría o eliminarlo."],
+  ["7. Analiza en Reportes","Encuentras la estructura de priorización financiera, el porcentaje de ahorro, la tendencia de seis meses y los comercios donde más gastas. También puedes exportar a CSV."],
+  ["8. Cambia de mes","Usa las flechas junto al nombre del mes para ver meses anteriores."],
+  ["9. Haz un respaldo cada mes","En Ajustes toca Descargar respaldo y guárdalo en Archivos o iCloud Drive. Los datos viven solo en este teléfono."],
+  ["Los botones i","Junto a cada indicador hay un botón con una i. Tócalo para ver qué significa y cómo se calcula."]
+];
 
 /* ---------- vistas ---------- */
 function catOptions(sel){
@@ -357,21 +400,22 @@ function viewInicio(){
   const al=alerts(ym);
   const nt=Object.values(S.months).reduce((s,a)=>s+a.length,0), lb=LS.get("pp.lastBackup");
   if(nt>=10&&(!lb||(Date.now()-new Date(lb+"T12:00").getTime())>30*864e5)) al.push({lv:"warn",t:"Hace más de un mes que no haces respaldo",d:"Ve a Ajustes y toca Descargar respaldo para proteger tu historial."});
-  let h=S.firstRun?`<section class="card"><h2>Primera vez en este iPhone</h2><p class="note" style="margin-top:0">Si tienes un archivo de respaldo, restáuralo para cargar tus categorías, presupuestos e historial. Si no, define tus valores en Ajustes.</p><div class="btns"><button class="btn" data-act="restore">Restaurar respaldo</button></div></section>`:"";
+  let h=S.firstRun?`<section class="card"><h2>Primera vez en este iPhone</h2><p class="note" style="margin-top:0">Si tienes un archivo de respaldo, restáuralo para cargar tus categorías, presupuestos e historial. Si no, define tus valores en Ajustes.</p><div class="btns"><button class="btn sec" data-act="help">Ver cómo se usa</button><button class="btn" data-act="restore">Restaurar respaldo</button></div></section>`:"";
   h+=`<section class="card hero">
-    <div class="eyebrow">Gastado en ${esc(monthName(ym,{month:"long"}))}</div>
+    <div class="eyebrow">Gastado en ${esc(monthName(ym,{month:"long"}))}${I("gastado")}</div>
     <div class="big num">${fmt(T.spent)}</div>
-    <div class="sub num">de ${fmt(P.spent)} presupuestados${isNow?` · día ${new Date().getDate()} de ${daysIn(ym)}`:""}</div>
+    <div class="sub num">de ${fmt(P.spent)} planeados${isNow?` · día ${new Date().getDate()} de ${daysIn(ym)}`:""}</div>
     ${barHTML(T.spent,P.spent,frac)}
     <div class="kpis num">
-      <div><span>${left>=0?"Disponible":"Excedido"}</span><b class="${left<0?"neg":""}">${fmt(Math.abs(left))}</b></div>
-      <div><span>Ingresos${T.income?"":" (plan)"}</span><b>${fmt(inc)}</b></div>
-      <div><span>Ahorro registrado</span><b>${fmt(T.saved)}</b></div>
+      <div><span>Presupuesto planeado de gastos${I("plan")}</span><b>${fmt(P.spent)}</b></div>
+      <div><span>${left>=0?"Falta por gastar del presupuesto":"Excedido sobre el presupuesto"}${I("falta")}</span><b class="${left<0?"neg":""}">${fmt(Math.abs(left))}</b></div>
+      <div><span>Ingresos recibidos${I("ingresos")}</span><b>${fmt(T.income)}</b></div>
+      <div><span>Ahorro registrado${I("ahorro")}</span><b>${fmt(T.saved)}</b></div>
     </div></section>`;
-  h+=`<section class="alerts" aria-label="Alertas">`;
+  h+=`<section class="alerts" aria-label="Alertas"><div class="group-h" style="margin:0"><span>Alertas${I("alertas")}</span></div>`;
   if(al.length) h+=al.slice(0,6).map(a=>`<div class="alert ${a.lv}"><div><strong>${esc(a.t)}</strong><small>${esc(a.d)}</small></div></div>`).join("");
   else h+=`<div class="alert ok"><div><strong>Sin sobreconsumos este mes</strong><small>${T.txs.length?"Todas las categorías van dentro del presupuesto.":"Registra tu primer movimiento con el botón +."}</small></div></div>`;
-  h+=`</section><section class="card"><h2>Presupuesto por categoría</h2>`;
+  h+=`</section><section class="card"><h2>Presupuesto por categoría${I("cats")}</h2>`;
   for(const g of GROUPS.filter(g=>g.kind!=="in")){
     const cs=S.meta.cats.filter(c=>c.group===g.id&&(c.budget>0||T.byCat[c.id])); if(!cs.length) continue;
     h+=`<div class="group-h"><span>${esc(g.name)}</span><span class="num">${fmt(T.byGroup[g.id]||0)}</span></div>`;
@@ -388,7 +432,7 @@ function viewMovs(){
   const q=norm(S.q);
   const list=txs.filter(t=>(!S.fcat||cat(t.cat).id===S.fcat)&&(!q||norm(t.desc+" "+cat(t.cat).name).includes(q)));
   let h=`<div class="filters"><input type="search" id="q" placeholder="Buscar" value="${esc(S.q)}" aria-label="Buscar movimientos"><select id="fcat" aria-label="Filtrar por categoría"><option value="">Todas las categorías</option>${catOptions(S.fcat)}</select></div>`;
-  if(!list.length) return h+`<div class="card empty">${txs.length?"Ningún movimiento coincide con el filtro.":"Aún no hay movimientos en "+esc(monthName(S.sel))+".<br>Toca + para registrar uno o pegar los SMS de Davivienda."}</div>`;
+  if(!list.length) return h+`<div class="card empty">${txs.length?"Ningún movimiento coincide con el filtro.":"Aún no hay movimientos en "+esc(monthName(S.sel))+".<br>Toca + para registrar uno o pegar los SMS de tu banco."}</div>`;
   h+=`<section class="card">`; let last="";
   for(const t of list){
     if(t.d!==last){last=t.d; const sum=list.filter(x=>x.d===t.d&&kindOf(x)==="out").reduce((s,x)=>s+x.amt,0);
@@ -414,39 +458,39 @@ function trendSVG(){
 function viewReportes(){
   const ym=S.sel,T=totals(ym),P=plan(); const g=(o,k)=>o.byGroup[k]||0;
   const incR=T.income, incP=P.income;
-  const rows=[["nec","Gastos necesarios","Capacidad obligatoria"],["obl","Gastos obligatorios","Capacidad de ahorro"],["aho","Ahorro fijo mensual","Capacidad variable"],["ntn","Gastos no tan necesarios","Capacidad de gratificación inmediata"],["nn","Gastos no necesarios","Ahorro extra mensual"]];
+  const rows=[["nec","Gastos necesarios","Capacidad obligatoria","c_obl"],["obl","Gastos obligatorios","Capacidad de ahorro","c_aho"],["aho","Ahorro fijo mensual","Capacidad variable","c_var"],["ntn","Gastos no tan necesarios","Capacidad de gratificación inmediata","c_gra"],["nn","Gastos no necesarios","Ahorro extra mensual","c_ext"]];
   let p=incP,r=incR;
-  let h=`<section class="card"><h2>Estructura de priorización financiera</h2><table class="num"><thead><tr><th>Concepto</th><th>Plan</th><th>Real</th></tr></thead><tbody>
+  let h=`<section class="card"><h2>Estructura de priorización financiera${I("prio")}</h2><table class="num"><thead><tr><th>Concepto</th><th>Plan</th><th>Real</th></tr></thead><tbody>
   <tr><td>(+) Ingresos totales</td><td>${fmt(incP)}</td><td>${fmt(incR)}</td></tr>`;
-  for(const [k,n,res] of rows){p-=g(P,k);r-=g(T,k);
-    h+=`<tr><td>(−) ${n}</td><td>${fmt(g(P,k))}</td><td>${fmt(g(T,k))}</td></tr><tr class="res"><td>(=) ${res}</td><td class="${p<0?"neg":""}">${fmt(p)}</td><td class="${r<0?"neg":""}">${fmt(r)}</td></tr>`}
+  for(const [k,n,res,tk] of rows){p-=g(P,k);r-=g(T,k);
+    h+=`<tr><td>(−) ${n}</td><td>${fmt(g(P,k))}</td><td>${fmt(g(T,k))}</td></tr><tr class="res"><td>(=) ${res}${I(tk)}</td><td class="${p<0?"neg":""}">${fmt(p)}</td><td class="${r<0?"neg":""}">${fmt(r)}</td></tr>`}
   const flujo=g(T,"aho")+r, rate=incR>0?flujo/incR:null;
   h+=`</tbody></table>`;
   if(rate!=null){const lv=rate>=.2?"ok":rate>=.1?"warn":"crit",tx=rate>=.2?"Excelente":rate>=.1?"Aceptable":"Revisar";
-    h+=`<div class="rowline"><span>Flujo de caja mensual<br><small class="note">Ahorro fijo + ahorro extra: ${fmt(flujo)}</small></span><span class="pill ${lv}">${Math.round(rate*100)} % · ${tx}</span></div>`}
+    h+=`<div class="rowline"><span>Flujo de caja mensual${I("flujo")}<br><small class="note">Ahorro fijo + ahorro extra: ${fmt(flujo)}</small></span><span class="pill ${lv}">${Math.round(rate*100)} % · ${tx}</span></div>`}
   else h+=`<p class="note">Registra tus ingresos del mes para calcular el % de ahorro sobre ingresos.</p>`;
-  h+=`</section><section class="card"><h2>Tendencia de gasto, últimos 6 meses</h2>${trendSVG()}</section>`;
+  h+=`</section><section class="card"><h2>Tendencia de gasto, últimos 6 meses${I("trend")}</h2>${trendSVG()}</section>`;
   const cs=S.meta.cats.filter(c=>GKIND[c.group]==="out").map(c=>({c,s:T.byCat[c.id]||0,a:avg3(ym,c.id)})).filter(x=>x.s||x.a).sort((a,b)=>b.s-a.s);
-  h+=`<section class="card"><h2>Categorías frente a tu promedio de 3 meses</h2>`;
+  h+=`<section class="card"><h2>Categorías frente a tu promedio de 3 meses${I("avg")}</h2>`;
   if(cs.length){h+=`<table class="num"><thead><tr><th>Categoría</th><th>Mes</th><th>Promedio</th><th>Cambio</th></tr></thead><tbody>`+cs.map(x=>{const dlt=x.a?(x.s/x.a-1)*100:null;
     return `<tr><td>${esc(x.c.name)}</td><td>${fmt(x.s)}</td><td>${x.a?fmt(x.a):"—"}</td><td class="${dlt==null?"":dlt>10?"neg":dlt<-10?"pos":""}">${dlt==null?"—":(dlt>0?"+":"")+Math.round(dlt)+" %"}</td></tr>`}).join("")+`</tbody></table>`}
   else h+=`<div class="empty">Sin gastos registrados todavía.</div>`;
   h+=`</section>`;
   const mm={}; for(const t of T.txs) if(kindOf(t)==="out"&&t.desc){const k=norm(t.desc); (mm[k]=mm[k]||{n:t.desc,s:0,c:0}); mm[k].s+=t.amt; mm[k].c++}
   const top=Object.values(mm).sort((a,b)=>b.s-a.s).slice(0,5);
-  if(top.length) h+=`<section class="card"><h2>Dónde más gastaste</h2>${top.map(x=>`<div class="rowline"><span>${esc(x.n)}<br><small class="note">${x.c} movimiento${x.c>1?"s":""}</small></span><b class="num">${fmt(x.s)}</b></div>`).join("")}</section>`;
+  if(top.length) h+=`<section class="card"><h2>Dónde más gastaste${I("top")}</h2>${top.map(x=>`<div class="rowline"><span>${esc(x.n)}<br><small class="note">${x.c} movimiento${x.c>1?"s":""}</small></span><b class="num">${fmt(x.s)}</b></div>`).join("")}</section>`;
   h+=`<button class="btn sec" data-act="csv">Exportar movimientos a CSV</button>`;
   return h;
 }
 function viewAjustes(){
-  let h=`<section class="card"><h2>Categorías y presupuesto mensual</h2>`;
+  let h=`<button class="btn sec" data-act="help">Cómo usar la app</button><section class="card"><h2>Categorías y presupuesto mensual${I("tipos")}</h2>`;
   for(const g of GROUPS){const cs=S.meta.cats.filter(c=>c.group===g.id);
     h+=`<div class="group-h"><span>${esc(g.name)}</span><span class="num">${fmt(cs.reduce((s,c)=>s+(c.budget||0),0))}</span></div>`;
     h+=cs.map(c=>`<button class="cat" data-act="cat" data-id="${esc(c.id)}"><div class="row"><span class="name">${esc(c.name)}</span><span class="amt num">${c.budget?fmt(c.budget):`<small>sin valor</small>`}</span></div></button>`).join("")}
   h+=`<div class="btns"><button class="btn sec" data-act="cat" data-id="">Agregar categoría</button></div></section>`;
   const nr=Object.keys(S.meta.rules).length;
-  h+=`<section class="card"><h2>SMS de Davivienda</h2><p class="note" style="margin-top:0">iOS no permite que ninguna app lea tus mensajes. Con un atajo, el iPhone guarda cada SMS del banco en una nota y aquí los pegas todos de una vez.</p>
-    <div class="rowline"><span>Comercios aprendidos<br><small class="note">Se guardan al asignar categoría a un SMS</small></span><b class="num">${nr}</b></div>
+  h+=`<section class="card"><h2>SMS del banco</h2><p class="note" style="margin-top:0">iOS no permite que ninguna app lea tus mensajes. Con un atajo, el iPhone guarda cada SMS del banco en una nota y aquí los pegas todos de una vez.</p>
+    <div class="rowline"><span>Comercios aprendidos${I("aprend")}<br><small class="note">Se guardan al asignar categoría a un SMS</small></span><b class="num">${nr}</b></div>
     <div class="btns"><button class="btn sec" data-act="atajo">Ver cómo crear el atajo</button></div></section>`;
   const lb=LS.get("pp.lastBackup"); const st="Tus datos se guardan en este iPhone y no salen de él. Descarga un respaldo cada mes y guárdalo en Archivos o iCloud Drive: si borras la app de la pantalla de inicio, el respaldo es la forma de recuperar el historial."+(lb?" Último respaldo: "+lb+".":"");
   const nm=Object.keys(S.months).filter(m=>S.months[m].length).length, nt=Object.values(S.months).reduce((s,a)=>s+a.length,0);
@@ -459,7 +503,7 @@ function viewAjustes(){
   return h;
 }
 const VIEWS={inicio:viewInicio,movimientos:viewMovs,reportes:viewReportes,ajustes:viewAjustes};
-function renderSync(){ $("#sync").innerHTML=`<span class="dot ok"></span><span>En este iPhone</span>` }
+function renderSync(){}
 function render(){
   {const n=monthName(S.sel,{month:"long"}); $("#monthLabel").textContent=n.charAt(0).toUpperCase()+n.slice(1)+" "+S.sel.slice(0,4)}
   renderSync();
@@ -485,9 +529,9 @@ function renderSheet(){
      <div style="display:flex;gap:8px"><div style="flex:2"><label for="f-d">Fecha</label><input id="f-d" type="date" value="${esc(t.d)}"></div><div style="flex:1"><label for="f-t">Hora</label><input id="f-t" type="time" value="${esc(t.t||"")}"></div></div>
      <div class="btns">${isNew?"":`<button class="btn danger" data-act="del" style="flex:0 0 auto;width:auto">Eliminar</button>`}<button class="btn" data-act="save-tx">Guardar</button></div>`;
   } else if(s.type==="sms"){
-    let h=head("Pegar SMS de Davivienda")+`<div class="seg"><button aria-pressed="false" data-act="add">Manual</button><button aria-pressed="true">Pegar SMS</button></div>`;
+    let h=head("Pegar SMS del banco")+`<div class="seg"><button aria-pressed="false" data-act="add">Manual</button><button aria-pressed="true">Pegar SMS</button></div>`;
     if(!s.parsed){
-      h+=`<label for="f-sms">Pega aquí uno o varios mensajes del banco</label><textarea id="f-sms" placeholder="Davivienda: Compra por $45.900 en EXITO CENTRO…"></textarea>
+      h+=`<label for="f-sms">Pega aquí uno o varios mensajes del banco</label><textarea id="f-sms" placeholder="Compra por $45.900 en EXITO CENTRO…"></textarea>
       <p class="note">Mantén presionado el cuadro y elige Pegar. Puedes pegar toda la nota donde el atajo guarda los mensajes; los que ya registraste se detectan y se omiten.</p>
       <div class="btns"><button class="btn" data-act="parse">Leer mensajes</button></div>`;
     } else {
@@ -511,13 +555,15 @@ function renderSheet(){
     P.innerHTML=head(s.title)+`<p>${esc(s.msg)}</p><div class="btns"><button class="btn sec" data-act="close">Cancelar</button><button class="btn danger" data-act="yes">${esc(s.yes)}</button></div>`;
   } else if(s.type==="atajo"){
     P.innerHTML=head("Atajo para los SMS del banco")+`<p class="note">Se configura una sola vez en la app Atajos del iPhone. Los nombres pueden variar un poco según tu versión de iOS.</p>
-    <ol class="steps"><li>Abre <b>Notas</b> y crea una nota llamada <b>Davivienda</b>.</li>
+    <ol class="steps"><li>Abre <b>Notas</b> y crea una nota llamada <b>Banco</b>.</li>
     <li>Abre <b>Atajos</b>, entra a <b>Automatización</b> y toca <b>+</b>.</li>
-    <li>Elige <b>Mensaje</b>. En <b>El mensaje contiene</b> escribe <b>Davivienda</b> y marca <b>Ejecutar inmediatamente</b>.</li>
+    <li>Elige <b>Mensaje</b>. En <b>El mensaje contiene</b> escribe el nombre de tu banco tal como aparece en sus mensajes (o elige su número en <b>Remitente</b>) y marca <b>Ejecutar inmediatamente</b>. Si usas varios bancos, crea una automatización por cada uno; todas pueden escribir en la misma nota.</li>
     <li>Toca <b>Siguiente</b>, crea una automatización nueva y agrega la acción <b>Añadir a nota</b>.</li>
-    <li>En la acción, usa como texto la variable <b>Entrada del atajo</b> (el mensaje) y como nota <b>Davivienda</b>.</li>
+    <li>En la acción, usa como texto la variable <b>Entrada del atajo</b> (el mensaje) y como nota <b>Banco</b>.</li>
     <li>Cuando quieras ponerte al día, abre la nota, copia todo y pégalo aquí con <b>+</b> → <b>Pegar SMS</b>.</li></ol>
     <p class="note">No hace falta borrar la nota: los mensajes ya registrados se omiten.</p><div class="btns"><button class="btn" data-act="close">Entendido</button></div>`;
+  } else if(s.type==="help"){
+    P.innerHTML=head("Cómo usar la app")+`<div class="help">${HELP.map(([t,d])=>`<h3>${esc(t)}</h3><p>${esc(d)}</p>`).join("")}</div><div class="btns"><button class="btn" data-act="close">Entendido</button></div>`;
   } else if(s.type==="text"){
     P.innerHTML=head(s.title)+`<p class="note">${esc(s.msg)}</p><textarea id="t-out" readonly>${esc(s.text)}</textarea><div class="btns"><button class="btn" data-act="copy">Copiar</button></div>`;
   }
@@ -579,12 +625,20 @@ const ACT={
     for(const ym in S.months){let ch=false; for(const t of S.months[ym]) if(t.cat===c.id){t.cat="sin";ch=true} if(ch) saveMonth(ym)}
     saveMeta(); render(); toast("Categoría eliminada")}}) },
   atajo(){openSheet({type:"atajo"})},
+  help(){openSheet({type:"help"}); $("#panel").scrollTop=0},
+  info(el){ const t=$("#tip"); if(!t.hidden&&t.dataset.k===el.dataset.k){t.hidden=true;return}
+    t.textContent=TIPS[el.dataset.k]||""; t.dataset.k=el.dataset.k; t.hidden=false;
+    const r=el.getBoundingClientRect(), w=Math.min(300,window.innerWidth-24); t.style.width=w+"px";
+    t.style.left=Math.min(Math.max(12,r.left+r.width/2-w/2),window.innerWidth-w-12)+"px";
+    const hh=t.offsetHeight; let top=r.bottom+8; if(top+hh>window.innerHeight-12) top=Math.max(12,r.top-hh-8); t.style.top=top+"px" },
   csv(){exportFile("presupuesto-movimientos.csv","﻿"+csv(),"Movimientos en CSV","text/csv")},
   backup(){exportFile("presupuesto-respaldo-"+todayStr()+".json",backupJSON(),"Respaldo de tus datos","application/json").then(ok=>{ if(ok){LS.set("pp.lastBackup",todayStr()); render()} })},
   restore(){ if(!needReady())return; $("#file").click() },
   copy(){ const el=$("#t-out"); el.select(); try{navigator.clipboard.writeText(el.value).then(()=>toast("Copiado"),()=>toast("Selecciona el texto y cópialo"))}catch(e){toast("Selecciona el texto y cópialo")} }
 };
+document.addEventListener("scroll",()=>{$("#tip").hidden=true},true);
 document.addEventListener("click",e=>{
+  if(!e.target.closest('[data-act="info"]')) $("#tip").hidden=true;
   if(e.target.id==="sheet"){closeSheet();return}
   const el=e.target.closest("[data-act]"); if(!el) return;
   const f=ACT[el.dataset.act]; if(f) f(el);
