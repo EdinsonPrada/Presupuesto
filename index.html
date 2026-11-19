@@ -148,6 +148,13 @@ ol.steps{padding-left:20px;margin:8px 0;display:flex;flex-direction:column;gap:8
 #tip[hidden]{display:none}
 .help h3{font-family:var(--display);font-size:14px;font-weight:600;margin:16px 0 4px}
 .help p{margin:0;font-size:14px}
+.card-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px}
+.card-h h2{margin:0}
+.sortrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0}
+.mv{display:flex;gap:4px;flex:none}
+.mv .icon-btn{background:var(--track);color:var(--ink);font-size:18px}
+.mv .icon-btn:disabled{opacity:.3;cursor:default}
+.group-h .btn.small{padding:4px 10px;font-size:12px;text-transform:none;letter-spacing:0}
 #toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:30;max-width:90%;text-align:center}
 #toast[hidden]{display:none}
 .note{font-size:13px;color:var(--muted)}
@@ -182,7 +189,7 @@ ol.steps{padding-left:20px;margin:8px 0;display:flex;flex-direction:column;gap:8
 
 <script>
 "use strict";
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.4.0";
 const SCHEMA = 1;   // versión del formato de datos; migrate() actualiza datos antiguos sin borrarlos
 
 const GROUPS = [
@@ -350,7 +357,7 @@ function parseSMS(text){
 /* ---------- ayuda ---------- */
 const TIPS={
   gastado:"Suma de todos los gastos registrados en el mes: necesarios, obligatorios, no tan necesarios y no necesarios. No incluye ahorros ni ingresos. La barra muestra qué parte del presupuesto planeado llevas. La raya vertical marca el día de hoy: si la barra pasa de la raya, gastas más rápido de lo planeado.",
-  plan:"Suma de los valores mensuales que definiste en Ajustes para tus categorías de gasto. No es el saldo de tu cuenta ni depende de tus ingresos.",
+  disponible:"Ingresos recibidos en el mes menos todos los egresos registrados: gastos y ahorros. Es lo que te queda del mes. Si registras gastos antes que el salario, puede salir en rojo hasta que registres el ingreso.",
   falta:"Presupuesto planeado menos lo que llevas gastado. Si gastas más de lo planeado, aquí aparece en rojo cuánto te excediste.",
   ingresos:"Suma de los ingresos que registraste este mes, por ejemplo cada quincena de salario. Se registran con el botón + eligiendo una categoría de ingreso.",
   ahorro:"Suma de los movimientos que registraste este mes en categorías de ahorro. Solo cuenta lo que realmente apartaste, no lo planeado.",
@@ -371,11 +378,11 @@ const TIPS={
 };
 const I=k=>`<button class="info" data-act="info" data-k="${k}" aria-label="Qué significa este indicador">i</button>`;
 const HELP=[
-  ["1. Define tu presupuesto","En Ajustes toca cada categoría y escribe su valor mensual planeado. Puedes agregar, renombrar o eliminar categorías y elegir su tipo."],
+  ["1. Define tu presupuesto","En Ajustes toca cada categoría y escribe su valor mensual planeado. Puedes agregar, renombrar o eliminar categorías y elegir su tipo. Con el botón Ordenar cambias el orden de las categorías dentro de cada tipo; ese orden se usa en toda la app."],
   ["2. Registra tus gastos","Toca +, escribe el valor, elige la categoría y guarda. La fecha y la hora se pueden cambiar si el gasto fue otro día."],
   ["3. Registra tus ingresos","Toca + y elige una categoría de ingreso, por ejemplo el salario de cada quincena. Inicio y Reportes usan solo lo que registres."],
   ["4. Pega los SMS del banco","Toca + y luego Pegar SMS. Pega uno o varios mensajes: la app lee valor, comercio y fecha, propone la categoría y omite los que ya registraste. En Ajustes están los pasos para que un atajo del iPhone los guarde solos en una nota."],
-  ["5. Revisa Inicio","Verás lo gastado frente a lo planeado, las alertas de sobreconsumo y el avance de cada categoría. Toca una categoría para ver sus movimientos."],
+  ["5. Revisa Inicio","Verás tu disponible del mes (ingresos recibidos menos gastos y ahorros), lo gastado frente a lo planeado, las alertas de sobreconsumo y el avance de cada categoría. Toca una categoría para ver sus movimientos."],
   ["6. Corrige en Movimientos","Busca o filtra, y toca un movimiento para editarlo, cambiarle la categoría o eliminarlo."],
   ["7. Analiza en Reportes","Encuentras la estructura de priorización financiera, el porcentaje de ahorro, la tendencia de seis meses y los comercios donde más gastas. También puedes exportar a CSV."],
   ["8. Cambia de mes","Usa las flechas junto al nombre del mes para ver meses anteriores."],
@@ -396,7 +403,7 @@ function barHTML(s,b,frac,thin){
 function viewInicio(){
   const ym=S.sel,T=totals(ym),P=plan(),isNow=ym===ymOf(todayStr());
   const frac=isNow?new Date().getDate()/daysIn(ym):null;
-  const left=P.spent-T.spent, inc=T.income||P.income;
+  const left=P.spent-T.spent, inc=T.income||P.income, avail=T.income-T.spent-T.saved;
   const al=alerts(ym);
   const nt=Object.values(S.months).reduce((s,a)=>s+a.length,0), lb=LS.get("pp.lastBackup");
   if(nt>=10&&(!lb||(Date.now()-new Date(lb+"T12:00").getTime())>30*864e5)) al.push({lv:"warn",t:"Hace más de un mes que no haces respaldo",d:"Ve a Ajustes y toca Descargar respaldo para proteger tu historial."});
@@ -407,7 +414,7 @@ function viewInicio(){
     <div class="sub num">de ${fmt(P.spent)} planeados${isNow?` · día ${new Date().getDate()} de ${daysIn(ym)}`:""}</div>
     ${barHTML(T.spent,P.spent,frac)}
     <div class="kpis num">
-      <div><span>Presupuesto planeado de gastos${I("plan")}</span><b>${fmt(P.spent)}</b></div>
+      <div><span>Disponible${I("disponible")}</span><b class="${avail<0?"neg":""}">${fmt(avail)}</b></div>
       <div><span>${left>=0?"Falta por gastar del presupuesto":"Excedido sobre el presupuesto"}${I("falta")}</span><b class="${left<0?"neg":""}">${fmt(Math.abs(left))}</b></div>
       <div><span>Ingresos recibidos${I("ingresos")}</span><b>${fmt(T.income)}</b></div>
       <div><span>Ahorro registrado${I("ahorro")}</span><b>${fmt(T.saved)}</b></div>
@@ -483,11 +490,16 @@ function viewReportes(){
   return h;
 }
 function viewAjustes(){
-  let h=`<button class="btn sec" data-act="help">Cómo usar la app</button><section class="card"><h2>Categorías y presupuesto mensual${I("tipos")}</h2>`;
+  const so=S.sorting;
+  let h=`<button class="btn sec" data-act="help">Cómo usar la app</button><section class="card"><div class="card-h"><h2>Categorías y presupuesto mensual${I("tipos")}</h2><button class="btn ${so?"":"sec "}small" data-act="sort-mode">${so?"Listo":"Ordenar"}</button></div>`;
+  if(so) h+=`<p class="note" style="margin:0 0 4px">Usa las flechas para mover cada categoría dentro de su tipo, o A–Z para ordenarlas alfabéticamente. El orden se guarda solo.</p>`;
   for(const g of GROUPS){const cs=S.meta.cats.filter(c=>c.group===g.id);
-    h+=`<div class="group-h"><span>${esc(g.name)}</span><span class="num">${fmt(cs.reduce((s,c)=>s+(c.budget||0),0))}</span></div>`;
-    h+=cs.map(c=>`<button class="cat" data-act="cat" data-id="${esc(c.id)}"><div class="row"><span class="name">${esc(c.name)}</span><span class="amt num">${c.budget?fmt(c.budget):`<small>sin valor</small>`}</span></div></button>`).join("")}
-  h+=`<div class="btns"><button class="btn sec" data-act="cat" data-id="">Agregar categoría</button></div></section>`;
+    h+=`<div class="group-h"><span>${esc(g.name)}</span>${so&&cs.length>1?`<button class="btn sec small" data-act="az" data-g="${g.id}">A–Z</button>`:`<span class="num">${fmt(cs.reduce((s,c)=>s+(c.budget||0),0))}</span>`}</div>`;
+    h+=cs.map((c,i)=>so
+      ?`<div class="cat sortrow"><span class="name">${esc(c.name)}</span><span class="mv"><button class="icon-btn" data-act="mv" data-id="${esc(c.id)}" data-d="-1" aria-label="Subir ${esc(c.name)}"${i===0?" disabled":""}>↑</button><button class="icon-btn" data-act="mv" data-id="${esc(c.id)}" data-d="1" aria-label="Bajar ${esc(c.name)}"${i===cs.length-1?" disabled":""}>↓</button></span></div>`
+      :`<button class="cat" data-act="cat" data-id="${esc(c.id)}"><div class="row"><span class="name">${esc(c.name)}</span><span class="amt num">${c.budget?fmt(c.budget):`<small>sin valor</small>`}</span></div></button>`).join("")}
+  if(!so) h+=`<div class="btns"><button class="btn sec" data-act="cat" data-id="">Agregar categoría</button></div>`;
+  h+=`</section>`;
   const nr=Object.keys(S.meta.rules).length;
   h+=`<section class="card"><h2>SMS del banco</h2><p class="note" style="margin-top:0">iOS no permite que ninguna app lea tus mensajes. Con un atajo, el iPhone guarda cada SMS del banco en una nota y aquí los pegas todos de una vez.</p>
     <div class="rowline"><span>Comercios aprendidos${I("aprend")}<br><small class="note">Se guardan al asignar categoría a un SMS</small></span><b class="num">${nr}</b></div>
@@ -625,6 +637,14 @@ const ACT={
     for(const ym in S.months){let ch=false; for(const t of S.months[ym]) if(t.cat===c.id){t.cat="sin";ch=true} if(ch) saveMonth(ym)}
     saveMeta(); render(); toast("Categoría eliminada")}}) },
   atajo(){openSheet({type:"atajo"})},
+  "sort-mode"(){S.sorting=!S.sorting; render()},
+  mv(el){ const cs=S.meta.cats, i=cs.findIndex(c=>c.id===el.dataset.id); if(i<0) return;
+    const d=+el.dataset.d; let j=i+d; while(j>=0&&j<cs.length&&cs[j].group!==cs[i].group) j+=d;
+    if(j<0||j>=cs.length) return; [cs[i],cs[j]]=[cs[j],cs[i]]; saveMeta(); render();
+    const b=document.querySelector(`[data-act="mv"][data-id="${CSS.escape(el.dataset.id)}"][data-d="${d}"]`); if(b&&!b.disabled) b.focus() },
+  az(el){ const g=el.dataset.g, cs=S.meta.cats, idx=[]; cs.forEach((c,i)=>{if(c.group===g) idx.push(i)});
+    const sorted=idx.map(i=>cs[i]).sort((a,b)=>a.id==="sin"?1:b.id==="sin"?-1:a.name.localeCompare(b.name,"es",{sensitivity:"base",numeric:true}));
+    idx.forEach((i,k)=>cs[i]=sorted[k]); saveMeta(); render(); toast("Ordenadas de la A a la Z") },
   help(){openSheet({type:"help"}); $("#panel").scrollTop=0},
   info(el){ const t=$("#tip"); if(!t.hidden&&t.dataset.k===el.dataset.k){t.hidden=true;return}
     t.textContent=TIPS[el.dataset.k]||""; t.dataset.k=el.dataset.k; t.hidden=false;
